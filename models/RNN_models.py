@@ -1,10 +1,11 @@
-from keras.layers import Input, Activation, Dense,Flatten, BatchNormalization, Add, Conv2D, MaxPooling2D
-from keras.layers import AveragePooling2D,Permute,Reshape,LSTM,Lambda,GRU,Bidirectional,BatchNormalization,Concatenate
-from keras import regularizers
-from keras.optimizers import Adam
+from tensorflow.keras.layers import Input, Activation, Dense,Flatten, BatchNormalization, Add, Conv2D, MaxPooling2D
+from tensorflow.keras.layers import AveragePooling2D,Permute,Reshape,LSTM,Lambda,GRU,Bidirectional,BatchNormalization,Concatenate
+from tensorflow.keras import regularizers
+from tensorflow.keras.optimizers import Adam
 from utils import sharpe_ratio_loss,sharpe_ratio
-import keras.backend as K
-from keras.models import Model
+import tensorflow.keras.backend as K
+from tensorflow.keras.models import Model
+from models.norm_layer import normalize_layer
 
 def build_lstm_model(params):
     units = params['units']
@@ -13,6 +14,7 @@ def build_lstm_model(params):
     reg2 = params['l2_1']
     lr = params['l2_2']
     input_shape = params['input_shape']
+    type_norm = params['type_norm']
     ts = input_shape[1]
     tickers = input_shape[0]
 
@@ -25,7 +27,7 @@ def build_lstm_model(params):
                     activation = activation,
                   kernel_regularizer=regularizers.l2(reg1)) (batch_norm)
 
-    batch_norm_2 = BatchNormalization()(recurrent_layer)
+    batch_norm_2 = normalize_layer(type_norm)(recurrent_layer)
 
 
     out = Dense(tickers, kernel_regularizer =regularizers.l2(reg2)) (batch_norm_2)
@@ -34,7 +36,7 @@ def build_lstm_model(params):
 
     model = Model([input], [out])
     optimizer = Adam(lr = lr)
-    model.compile(loss=sharpe_ratio_loss, optimizer=optimizer, metrics = [sharpe_ratio])
+    model.compile(loss=sharpe_ratio_loss(), optimizer=optimizer, metrics = [sharpe_ratio])
     return model
 
 def build_gru_model(params):
@@ -45,6 +47,7 @@ def build_gru_model(params):
     lr = params['l2_2']
 
     input_shape = params['input_shape']
+    type_norm = params['type_norm']
     ts = input_shape[1]
     tickers = input_shape[0]
 
@@ -57,12 +60,12 @@ def build_gru_model(params):
                         activation = activation,
                       kernel_regularizer=regularizers.l2(reg1)) (batch_norm)
 
-    batch_norm_2 = BatchNormalization()(recurrent_layer)
+    batch_norm_2 = normalize_layer(type_norm)(recurrent_layer)
     out = Dense(tickers, kernel_regularizer =regularizers.l2(reg2)) (batch_norm_2)
     out = Activation('sigmoid')(out)
 
     model = Model([input], [out])
     optimizer = Adam(lr = lr)
-    model.compile(loss=sharpe_ratio_loss, optimizer=optimizer, metrics = [sharpe_ratio])
+    model.compile(loss=sharpe_ratio_loss(), optimizer=optimizer, metrics = [sharpe_ratio])
 
     return model

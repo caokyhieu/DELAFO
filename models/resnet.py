@@ -1,17 +1,18 @@
 
-import keras.backend as K
-from keras.layers import Input, Activation, Dense,Flatten, BatchNormalization, Add, Conv2D, MaxPooling2D,AveragePooling2D
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import Input, Activation, Dense,Flatten, BatchNormalization, Add, Conv2D, MaxPooling2D,AveragePooling2D
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import numpy as np
-from keras import regularizers
-from keras.optimizers import Adam,SGD
-from keras.models import Model
+from tensorflow.keras import regularizers
+from tensorflow.keras.optimizers import Adam,SGD
+from tensorflow.keras.models import Model
 from utils import sharpe_ratio_loss,sharpe_ratio
+from models.norm_layer import normalize_layer
 
-def bn_relu(input):
+def bn_relu(input,type_norm='batch'):
     """Helper to build a BN -> relu block
     """
-    norm = BatchNormalization()(input)
+    norm = normalize_layer(type_norm)(input)
     return Activation("relu")(norm)
 
 
@@ -23,14 +24,16 @@ def conv_bn_relu(**conv_params):
     strides = conv_params.setdefault("strides", (1, 1))
     kernel_initializer = conv_params.setdefault("kernel_initializer", "glorot_uniform")
     padding = conv_params.setdefault("padding", "same")
+    type_norm = conv_params["type_norm"]
     kernel_regularizer = conv_params.setdefault("kernel_regularizer", regularizers.l2(1.e-4))
 
     def f(input):
+        ## change a bit            
         conv = Conv2D(filters=filters, kernel_size=kernel_size,
                       strides=strides, padding=padding,
                       kernel_initializer=kernel_initializer,
                       kernel_regularizer=kernel_regularizer)(input)
-        return bn_relu(conv)
+        return bn_relu(conv,type_norm=type_norm)
 
     return f
 
@@ -45,9 +48,10 @@ def bn_relu_conv(**conv_params):
     kernel_initializer = conv_params.setdefault("kernel_initializer", "glorot_uniform")
     padding = conv_params.setdefault("padding", "same")
     kernel_regularizer = conv_params.setdefault("kernel_regularizer", regularizers.l2(1.e-4))
+    type_norm = conv_params["type_norm"]
 
     def f(input):
-        activation = bn_relu(input)
+        activation = bn_relu(input,type_norm=type_norm)
         return Conv2D(filters=filters, kernel_size=kernel_size,
                       strides=strides, padding=padding,
                       kernel_initializer=kernel_initializer,
@@ -76,7 +80,7 @@ def short_cut(input, residual):
 
     return Add()([shortcut, residual])
 
-def residual_block(filters, repetitions,kernel_size=(3,3),strides=(2,2), is_first_layer=False):
+def residual_block(filters, repetitions,kernel_size=(3,3),strides=(2,2), is_first_layer=False,type_norm='batch'):
     """Builds a residual block with repeating bottleneck blocks.
     """
     def f(input):
@@ -85,13 +89,13 @@ def residual_block(filters, repetitions,kernel_size=(3,3),strides=(2,2), is_firs
             if i == 0 and not is_first_layer:
                 init_strides = strides
             input = basic_block(filters=filters,kernel_size=kernel_size, init_strides=init_strides,
-                                   is_first_block_of_first_layer=(is_first_layer and i == 0))(input)
+                                   is_first_block_of_first_layer=(is_first_layer and i == 0),type_norm=type_norm)(input)
         return input
 
     return f
 
 
-def basic_block(filters,kernel_size=(3,3), init_strides=(1, 1), is_first_block_of_first_layer=False):
+def basic_block(filters,kernel_size=(3,3), init_strides=(1, 1), is_first_block_of_first_layer=False,type_norm='batch'):
 
     def f(input):
 
@@ -103,9 +107,9 @@ def basic_block(filters,kernel_size=(3,3), init_strides=(1, 1), is_first_block_o
                            kernel_regularizer=regularizers.l2(1e-4))(input)
         else:
             conv1 = bn_relu_conv(filters=filters, kernel_size=kernel_size,
-                                  strides=init_strides)(input)
+                                  strides=init_strides,type_norm=type_norm)(input)
 
-        residual = bn_relu_conv(filters=filters, kernel_size=kernel_size)(conv1)
+        residual = bn_relu_conv(filters=filters, kernel_size=kernel_size,type_norm=type_norm)(conv1)
         return short_cut(input, residual)
 
     return f
@@ -121,12 +125,10 @@ def build_resnet_model(params):
     kernel_size_3 = params['repetitions_5']
     kernel_size_4 = params['repetitions_7']
 
-
     num_filter_1 = params['filters_2']
     num_filter_2 = params['filters_3']
     num_filter_3 = params['filters_4']
     num_filter_4 = params['filters_5']
-
 
     reps_1 = params['repetitions']
     reps_2 = params['repetitions_2']
@@ -135,37 +137,37 @@ def build_resnet_model(params):
 
     conv2_nfilter = params['filters_6']
 
-
     regularized_coff_1 = params['l2']
     regularized_coff_2 = params['l2_1']
     regularized_coff_3 = params['l2_2']
     learning_rate = params['l2_3']
     input_shape = params['input_shape']
+    type_norm = params['type_norm']
     ts = input_shape[1]
     tickers = input_shape[0]
 
     input = Input(shape=input_shape)
     conv1 = conv_bn_relu(filters=conv1_nfilter,kernel_size=(1,conv1_ksize),strides=(1,1),\
-                         kernel_regularizer=regularizers.l2(regularized_coff_1)) (input)
+                         kernel_regularizer=regularizers.l2(regularized_coff_1),type_norm=type_norm) (input)
 
     pool1 = MaxPooling2D(pool_size=(1, 3), strides=(1, 2), padding="same")(conv1)
 
     out = residual_block(filters=num_filter_1, repetitions=reps_1 ,kernel_size=(1,kernel_size_1),\
-                         strides=(1,2),is_first_layer=True) (pool1)
+                         strides=(1,2),is_first_layer=True,type_norm=type_norm) (pool1)
 
     out = residual_block(filters=num_filter_2, repetitions=reps_2,\
-                         kernel_size=(1,kernel_size_2), strides=(1,2)) (out)
+                         kernel_size=(1,kernel_size_2), strides=(1,2),type_norm=type_norm) (out)
 
     out = residual_block(filters=num_filter_3, repetitions=reps_3,\
-                         kernel_size=(1,kernel_size_3),strides=(1,2)) (out)
+                         kernel_size=(1,kernel_size_3),strides=(1,2),type_norm=type_norm) (out)
 
     out = residual_block(filters=num_filter_4, repetitions=reps_4,\
-                         kernel_size=(1,kernel_size_4),strides=(1,2)) (out)
+                         kernel_size=(1,kernel_size_4),strides=(1,2),type_norm=type_norm) (out)
 
-    out = bn_relu(out)
+    out = bn_relu(out,type_norm)
 
-    conv2 = conv_bn_relu(filters=conv2_nfilter,kernel_size=(381,1),strides=(1,1),\
-                     kernel_regularizer=regularizers.l2(regularized_coff_2),padding='valid') (out)
+    conv2 = conv_bn_relu(filters=conv2_nfilter,kernel_size=(tickers,1),strides=(1,1),\
+                     kernel_regularizer=regularizers.l2(regularized_coff_2),padding='valid',type_norm=type_norm) (out)
 
     out_shape = K.int_shape(conv2)
     out = AveragePooling2D(pool_size=(out_shape[1], out_shape[2]),
@@ -176,9 +178,8 @@ def build_resnet_model(params):
     out = Dense(tickers, kernel_regularizer =regularizers.l2(regularized_coff_3))(out)
     out = Activation('sigmoid')(out)
 
-
     model = Model([input], [out])
     optimizer = Adam(lr=learning_rate)
-    model.compile(loss=sharpe_ratio_loss, optimizer=optimizer, metrics = [sharpe_ratio])
+    model.compile(loss=sharpe_ratio_loss(), optimizer=optimizer, metrics = [sharpe_ratio])
 
     return model

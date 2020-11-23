@@ -1,7 +1,8 @@
-from keras import backend as K
-from keras.layers import Layer
-from keras import regularizers
-
+from tensorflow.keras import backend as K
+from tensorflow.keras.layers import Layer
+from tensorflow.keras import regularizers
+import numpy as np
+import pdb
 class AdditiveAttentionLayer(Layer):
 
 	def __init__(self, latent_dim=32,kernel_regularizer = None,
@@ -13,15 +14,15 @@ class AdditiveAttentionLayer(Layer):
 	def build(self, input_shape):
 		in_seq_shape = input_shape[0]
 		out_shape = input_shape[1]
-		latent_dim = 64
+		# latent_dim = 64
 		# Create a trainable weight variable for this layer.
 		self.Wa = self.add_weight(name='Wa',
-									  shape=(in_seq_shape[-1] , self.latent_dim),
+									  shape=(int(in_seq_shape[-1]) , self.latent_dim),
 									  initializer='uniform',
 									  regularizer=self.kernel_regularizer,
 									  trainable=True)
 		self.Ua = self.add_weight(name='Ua',
-									  shape=(out_shape[1], self.latent_dim),
+									  shape=(int(out_shape[1]), self.latent_dim),
 									  initializer='uniform',
 									  regularizer=self.kernel_regularizer,
 									  trainable=True)
@@ -41,6 +42,8 @@ class AdditiveAttentionLayer(Layer):
 		  ## reshape input sequence from(batchsize,timesteps,features) to (batchsize*timesteps,features)
 		  in_seq_shape = K.shape(in_seq)
 		  in_seq_reshape = K.reshape(in_seq,(in_seq_shape[0]*in_seq_shape[1],-1))
+		  print('Input reshape ',end='')
+		  print(K.int_shape(in_seq_reshape))
 
 		  ## Compute
 		  W_as = K.dot(in_seq_reshape,self.Wa)
@@ -90,12 +93,12 @@ class SelfAttentionLayer(Layer):
         h_dim = input_shape[2]
         # Create a trainable weight variable for this layer.
         self.WQ = self.add_weight(name='WQ',
-                                      shape=(h_dim , self.latent_dim),
+                                      shape=(int(h_dim) , self.latent_dim),
                                       initializer='uniform',
                                       regularizer=self.kernel_regularizer,
                                       trainable=True)
         self.WK = self.add_weight(name='Ua',
-                                      shape=(h_dim, self.latent_dim),
+                                      shape=(int(h_dim), self.latent_dim),
                                       initializer='uniform',
                                       regularizer=self.kernel_regularizer,
                                       trainable=True)
@@ -123,16 +126,20 @@ class SelfAttentionLayer(Layer):
 
           energy = K.batch_dot(query,K.permute_dimensions(key,(0,2,1)))/self.latent_dim
 
-        #   #### Apply masking prob here
-        #   masking_prob = np.ones((K.int_shape(key)[1],K.int_shape(key)[1]))
-        #   masking_prob = np.tril(masking_prob, k=0)
+          #### Apply masking prob here
+          masking_prob = np.ones((K.int_shape(key)[1],K.int_shape(key)[1]))
+          masking_prob = np.tril(masking_prob, k=0)
+		#   print()
 
-        #   ## apply masking to energy
+          ## prob have shape(batchsize,timesteps) 		   ## apply masking to energy
+          prob = K.exp(energy - K.max(energy))
+        #   prob = energy
+          prob =  prob * K.cast(K.expand_dims(masking_prob,axis=0),K.floatx())
+          prob /= K.cast(K.sum(prob, axis=-1, keepdims=True) + K.epsilon(), K.floatx())
+        #   energy = energy * masking_prob[np.newaxis,:,:]
+        #   prob = K.softmax(energy,axis=-1)
 
-        #   energy = energy * masking_prob
-
-          ## prob have shape(batchsize,timesteps)
-          prob = K.softmax(energy,axis=-1)
+        #   pdb.set_trace()
           print('Shape of prob:')
           print(K.int_shape(prob))
 

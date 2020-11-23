@@ -1,0 +1,13 @@
+{
+    "nb_filters": 8,
+    "kernel_size": 2, 
+    "dilations": [1,2,4],
+    "nb_stacks":2 , 
+    "padding": "causal", 
+    "use_skip_connections": 0, 
+    "return_sequences": 0,
+    "dropout_rate": 0.5,
+    "name": "tcn",
+    "kernel_initializer": "he_normal", 
+    "activation":"relu"
+  }

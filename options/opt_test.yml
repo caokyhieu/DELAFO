@@ -1,0 +1,10 @@
+testing:
+  dir_model: 'pretrained_model_HOSE/ResNet_batch'
+  path_data: 'data/data.h5'
+  timesteps_output: 19
+  n_split: 10
+  start_index: 3
+  ld: 0.00001
+  C: 1.0
+  p: 3.5
+  m: 1.3
